@@ -1,0 +1,16 @@
+Fidel Sosa - 6.885: Lab 6 Questions
+
+1. The general approach I took was to disambiguate emails based on the local part of the address (i.e. everything before the @ sign). In order to accomplish thi, I first used Spark to find all the unique emails in the dataset. With this set, I then proceeded to isolate the local part of  the email and created tuples of thelocal part and the full email. I then grouped these tuples by the first letter of the local name (e.g. 'k' for kenneth.lay) and compared the emails in these groups against each other to find close matches. Having determined the close matches, I was finally able to create a dictionary of email addresses to master emails. This was used to determine which master email to group a particular email under, for the purposes of term consolidation. For example, kenneth.lay@enron.com and kenneth.lay@yahoo.com would have the same master email of kennneth.lay@enron.com. Spark influenced the technique by making it relatively simple to calculate these sets and broadcast the final dictionary to all the worker nodes. With MapReduce, this would surely have been much more difficult. 
+
+2. Deploying Spark to the final nodes was significantly simpler than deploying an EMR job. In general, Spark was much simpler to develop with than EMR. Being ableto easily perform map/reduce/aggregation functions makes using Spark great. However, the Spark API is not necessarily the simplest to comprehend, especially when working with sets involves multiple chains of aggregation functions. Given the choice of EMR vs Spark, I would pick Spark for simplicity and power as it provides shortcuts for a lot of common MR functions. 
+
+3. For certain custom aggregations or jobs, EMR would be more powerful as you have direct control over the map/reduce phases, whereas you're limited to a certain set of Spark-implemented functions. Additionally, this direct control means that you have a clearer understanding of each individual phase, whereas Spark can often get confusing. 
+
+4. The most obvious limitation I ran into was creating a (dictionary, count) tuple and not being able to reduce that in a simple fashion. In the EMR job, this was incredibly simple in the reduce phase. In Spark, this involved a rather involved process of grouping and additional code to calculate the occurrence sum. This was due to the PySpark's inability to hash the dictionary as a key in reducing the results. 
+
+5. The main benefit in simplifying the PageRank job is the ability to iterate over results. As a result, the PageRank job becomes much simpler to perform due to the fact that you iteratively update the ranks for pages. Spark functions, like join, also simplify both the complexity of the code and make it much simpler to implement the cumulative PageRank calculations. 
+
+NOTE: I was able to successfully run my script on the lay-k.json data and get
+the right results. However, I was not able to get the script to finish on the
+full data set due to it running for more than an hour. As of this note, the
+job is still running. 
