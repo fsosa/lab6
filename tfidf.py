@@ -5,19 +5,18 @@ import time
 import math
 from operator import add
 from difflib import get_close_matches
+from term_tools import get_terms
 
 print 'loading'
 sc = SparkContext("spark://ec2-107-22-0-110.compute-1.amazonaws.com:7077", "TF-IDF", pyFiles=['term_tools.py'])
-
-from term_tools import get_terms
 
 # Returns a list of dicts => each dict containing a sender and a term
 def sender_term_pairs(email):
   sender = email['sender']
   master_email = sender
 
-  if sender in email_to_master:
-    master_email = email_to_master[sender]
+  if sender in email_to_master.value:
+    master_email = email_to_master.value[sender]
 
   return map(lambda x: {'sender': master_email, 'term': x}, get_terms(email['text']))
 
@@ -69,7 +68,8 @@ def consolidate_emails(grouped_pair):
 
 
 #---- BEGIN PROCESSING ------#
-corpus = sc.textFile('s3n://AKIAJFDTPC4XX2LVETGA:lJPMR8IqPw2rsVKmsSgniUd+cLhpItI42Z6DCFku@6885public/enron/lay-k.json')
+corpus = sc.textFile('s3n://AKIAJFDTPC4XX2LVETGA:lJPMR8IqPw2rsVKmsSgniUd+cLhpItI42Z6DCFku@6885public/enron/*.json')
+#corpus = sc.textFile('s3n://AKIAJFDTPC4XX2LVETGA:lJPMR8IqPw2rsVKmsSgniUd+cLhpItI42Z6DCFku@6885public/enron/lay-k.json')
 #corpus = sc.textFile('s3n://AKIAJFDTPC4XX2LVETGA:lJPMR8IqPw2rsVKmsSgniUd+cLhpItI42Z6DCFku@6885public/fsosa/short.json')
 
 json_corpus = corpus.map(lambda x: json.loads(x)).cache()
@@ -83,7 +83,7 @@ json_corpus = corpus.map(lambda x: json.loads(x)).cache()
 #     e.g ken.lay@enron.com and ken.lay@yahoo.com have as their master email ken.lay@enron.com 
 # - Broadcast to all nodes so that they know about it
 unique_emails = json_corpus.map(lambda x: x['sender']).distinct()
-lastnames = unique_emails.map(lambda x: (x,x.split("@")[0])).groupBy(lambda x: x[1][0]) 
+lastnames = unique_emails.map(lambda x: (x,x.split("@")[0])).groupBy(lambda x: x[1][0], 500) 
 consolidated = lastnames.flatMap(consolidate_emails).flatMap(lambda x: map(lambda y: (y, x[0]), x[1])).collectAsMap()
 email_to_master = sc.broadcast(consolidated)
 
@@ -93,13 +93,13 @@ term_counts = json_corpus.flatMap(lambda x: get_terms(x['text'])).map(lambda y: 
 per_term_idf = term_counts.map(lambda x: (x[0], math.log(516893.0 / x[1]))).cache()
 
 # Get sender/term pairs
-grouped_sender_term_pairs = json_corpus.flatMap(sender_term_pairs).groupBy(lambda x: x['term'])
+grouped_sender_term_pairs = json_corpus.flatMap(sender_term_pairs).groupBy(lambda x: x['term'], 500)
 
 # Calculate sender-term frequency
 sender_tf = grouped_sender_term_pairs.flatMap(sender_tf).cache()
 
 #e.g. join: (u'talk', ((u'rosalee.fleming@enron.com', 3), 12.056978880153091))
-tfidf = sender_tf.join(per_term_idf).map(lambda x:{'sender': x[1][0][0], 'term':x[0], 'tf-idf':x[1][0][1]*x[1][1]})
+tfidf = sender_tf.join(per_term_idf, 500).map(lambda x:{'sender': x[1][0][0], 'term':x[0], 'tf-idf':x[1][0][1]*x[1][1]})
 
 output = tfidf.collect()
 for x in output:
